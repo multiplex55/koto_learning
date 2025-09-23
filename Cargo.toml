@@ -8,6 +8,7 @@ anyhow = "1.0.100"
 directories = "6.0.0"
 eframe = "0.32.3"
 egui = "0.32.3"
+egui_extras = "0.32.3"
 env_logger = "0.11.8"
 koto = { version = "0.16.0", default-features = false, features = ["arc", "serde"] }
 libloading = "0.8.9"

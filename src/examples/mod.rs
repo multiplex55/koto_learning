@@ -28,6 +28,45 @@ pub struct ExampleMetadata {
     pub run_instructions: Option<String>,
     #[serde(default)]
     pub categories: Vec<String>,
+    #[serde(default)]
+    pub documentation: Vec<ExampleLink>,
+    #[serde(default)]
+    pub how_it_works: Vec<String>,
+    #[serde(default)]
+    pub inputs: Vec<ExampleInput>,
+    #[serde(default)]
+    pub benchmarks: Option<ExampleResource>,
+    #[serde(default)]
+    pub tests: Option<ExampleResource>,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct ExampleLink {
+    pub label: String,
+    pub url: String,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct ExampleInput {
+    pub name: String,
+    #[serde(default)]
+    pub label: Option<String>,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub default: Option<String>,
+    #[serde(default)]
+    pub placeholder: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct ExampleResource {
+    #[serde(default)]
+    pub label: Option<String>,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub url: Option<String>,
 }
 
 #[derive(Clone, Debug)]
