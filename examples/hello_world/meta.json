@@ -1,0 +1,9 @@
+{
+  "id": "hello_world",
+  "title": "Hello World",
+  "description": "Print a traditional greeting to stdout.",
+  "note": "Demonstrates the simplest possible Koto script.",
+  "doc_url": "https://koto.dev/",
+  "run_instructions": "Press Run Example to execute the script.",
+  "categories": ["basics", "io"]
+}

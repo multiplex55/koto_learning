@@ -1,0 +1,8 @@
+{
+  "id": "fibonacci",
+  "title": "Recursive Fibonacci",
+  "description": "Calculate the 10th Fibonacci number recursively.",
+  "doc_url": "https://koto.dev/docs/",
+  "run_instructions": "Try changing the input to see how execution time changes.",
+  "categories": ["math", "recursion"]
+}
