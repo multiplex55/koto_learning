@@ -1,0 +1,22 @@
+# Title: Structured logging
+# Description: Exercises host.log_info with JSON payloads.
+
+import serde
+
+event_for = |label|
+  { action: label, timestamp: host.now() }
+
+export tests =
+  @pre_test: || host.log_info serde.to_json({ action: 'suite-pre', label: 'tests' })
+  @post_test: || host.log_info serde.to_json({ action: 'suite-post', label: 'tests' })
+  @test echoes_message: ||
+    payload = { action: 'echo', value: 42 }
+    message = serde.to_json(payload)
+    logged = host.log_info message
+    if logged != message
+      throw "Expected host.log_info to echo the message"
+  @test serializes_event: ||
+    payload = event_for 'serialize'
+    message = serde.to_json(payload)
+    if message.find('serialize') == nil
+      throw 'Expected serialized payload to contain the action label'

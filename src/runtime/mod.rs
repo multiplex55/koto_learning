@@ -16,10 +16,11 @@ use libloading::Library;
 use once_cell::sync::Lazy;
 use serde_json::Value as JsonValue;
 use serde_yaml::Value as YamlValue;
-use tracing::Level;
 use uuid::Uuid;
 
 pub static RUNTIME: Lazy<Runtime> = Lazy::new(|| Runtime::new().expect("runtime init failed"));
+
+pub mod watcher;
 
 #[derive(Clone, Copy)]
 pub struct Executor {
@@ -71,6 +72,7 @@ pub struct ExecutionOutput {
     pub stdout: String,
     pub stderr: String,
     pub duration: Duration,
+    pub value: Option<KValue>,
 }
 
 struct RuntimeState {
@@ -112,7 +114,7 @@ struct RuntimeLibraryApi {
 
 impl Runtime {
     pub fn new() -> anyhow::Result<Self> {
-        logging::init();
+        logging::init_global()?;
 
         let stdout = BufferHandle::new("stdout");
         let stderr = BufferHandle::new("stderr");
@@ -168,10 +170,11 @@ impl Runtime {
 
         match result {
             Ok(value) => {
-                let output = if matches!(value, KValue::Null) {
-                    None
+                let (output, value) = if matches!(value, KValue::Null) {
+                    (None, None)
                 } else {
-                    Some(state.koto.value_to_string(value.clone())?)
+                    let rendered = state.koto.value_to_string(value.clone())?;
+                    (Some(rendered), Some(value))
                 };
                 logging::with_runtime_subscriber(|| {
                     tracing::info!(target: "runtime.vm", elapsed_ms = duration.as_millis() as u64, "Script completed");
@@ -181,6 +184,7 @@ impl Runtime {
                     stdout,
                     stderr,
                     duration,
+                    value,
                 })
             }
             Err(error) => {
@@ -190,6 +194,27 @@ impl Runtime {
                 Err(anyhow!("{error}"))
             }
         }
+    }
+
+    pub fn with_koto<F, R>(&self, f: F) -> anyhow::Result<R>
+    where
+        F: FnOnce(&mut Koto) -> anyhow::Result<R>,
+    {
+        let mut state = self.lock_state()?;
+        f(&mut state.koto)
+    }
+
+    pub fn clear_output(&self) {
+        self.stdout.clear();
+        self.stderr.clear();
+    }
+
+    pub fn take_stdout(&self) -> String {
+        self.stdout.take()
+    }
+
+    pub fn take_stderr(&self) -> String {
+        self.stderr.take()
     }
 
     pub fn set_execution_timeout(&self, limit: Option<Duration>) -> anyhow::Result<()> {
@@ -562,38 +587,59 @@ pub mod logging {
     use super::*;
     use once_cell::sync::OnceCell;
     use tracing_appender::non_blocking::WorkerGuard;
+    use tracing_log::LogTracer;
+    use tracing_subscriber::{
+        EnvFilter, fmt,
+        layer::{Layer, SubscriberExt},
+        util::SubscriberInitExt,
+    };
 
-    static DISPATCH: OnceCell<tracing::Dispatch> = OnceCell::new();
+    static INIT: OnceCell<()> = OnceCell::new();
     static GUARD: OnceCell<WorkerGuard> = OnceCell::new();
 
-    pub fn init() {
-        let _ = dispatcher();
+    pub fn init_global() -> anyhow::Result<()> {
+        INIT.get_or_try_init(|| {
+            let filter_string = std::env::var("RUST_LOG").unwrap_or_else(|_| "info".to_string());
+
+            let logs_dir = PathBuf::from("logs");
+            fs::create_dir_all(&logs_dir)?;
+
+            let file_appender = tracing_appender::rolling::never(&logs_dir, "runtime.log");
+            let (file_writer, guard) = tracing_appender::non_blocking(file_appender);
+
+            let _ = LogTracer::init();
+
+            let file_filter = EnvFilter::try_new(filter_string.clone())?;
+            let console_filter = EnvFilter::try_new(filter_string)?;
+
+            let console_layer = fmt::layer()
+                .with_writer(std::io::stderr)
+                .with_filter(console_filter);
+            let file_layer = fmt::layer()
+                .with_ansi(false)
+                .with_writer(file_writer)
+                .with_filter(file_filter);
+
+            let _ = tracing_subscriber::registry()
+                .with(console_layer)
+                .with(file_layer)
+                .try_init();
+
+            let _ = GUARD.set(guard);
+
+            Ok::<(), anyhow::Error>(())
+        })?;
+
+        Ok(())
     }
 
     pub fn with_runtime_subscriber<F, R>(f: F) -> R
     where
         F: FnOnce() -> R,
     {
-        let dispatch = dispatcher();
-        tracing::dispatcher::with_default(dispatch, f)
-    }
-
-    fn dispatcher() -> &'static tracing::Dispatch {
-        DISPATCH.get_or_init(|| {
-            let logs_dir = PathBuf::from("logs");
-            if let Err(error) = fs::create_dir_all(&logs_dir) {
-                eprintln!("Failed to create log directory {logs_dir:?}: {error}");
-            }
-            let file_appender = tracing_appender::rolling::never(&logs_dir, "runtime.log");
-            let (writer, guard) = tracing_appender::non_blocking(file_appender);
-            let dispatch = tracing_subscriber::fmt()
-                .with_ansi(false)
-                .with_max_level(Level::TRACE)
-                .with_writer(writer)
-                .finish()
-                .into();
-            let _ = GUARD.get_or_init(|| guard);
-            dispatch
-        })
+        if let Err(error) = init_global() {
+            eprintln!("Failed to initialize logging: {error}");
+        }
+        f()
     }
 }
