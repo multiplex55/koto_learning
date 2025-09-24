@@ -3,7 +3,7 @@ use crate::{
     runtime,
 };
 use eframe::egui;
-use egui::{Align2, Color32, CornerRadius, RichText};
+use egui::{Align2, Color32, CornerRadius, Grid, RichText};
 use egui_extras::syntax_highlighting;
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap},
@@ -579,9 +579,9 @@ impl ExplorerApp {
                 ui.toggle_value(&mut self.hot_reload_enabled, "Hot reload");
             });
 
-            if let Some(bench) = &example.metadata.benchmarks {
+            if example.metadata.benchmarks.is_some() || example.benchmark_summary.is_some() {
                 ui.add_space(6.0);
-                self.resource_row(ui, "⏱ Benchmarks", bench);
+                self.benchmark_summary_ui(ui, &example);
             }
             if let Some(tests) = &example.metadata.tests {
                 self.resource_row(ui, "🧪 Tests", tests);
@@ -615,6 +615,69 @@ impl ExplorerApp {
             if let Some(url) = &resource.url {
                 let link_label = resource.label.as_deref().unwrap_or("View details");
                 ui.hyperlink_to(link_label, url);
+            }
+        });
+    }
+
+    fn benchmark_summary_ui(&self, ui: &mut egui::Ui, example: &Example) {
+        ui.group(|ui| {
+            ui.heading("Benchmarks");
+            if let Some(summary) = &example.benchmark_summary {
+                if summary.measurements.is_empty() {
+                    ui.label("Run `cargo bench` to generate Criterion results for this example.");
+                } else {
+                    let grid_id = format!("benchmark_summary_{}", summary.example_id);
+                    Grid::new(grid_id).striped(true).show(ui, |grid| {
+                        grid.label(RichText::new("Implementation").strong());
+                        grid.label(RichText::new("Input").strong());
+                        grid.label(RichText::new("Mean (ms)").strong());
+                        grid.label(RichText::new("CI (ms)").strong());
+                        grid.end_row();
+
+                        for measurement in &summary.measurements {
+                            grid.label(&measurement.benchmark_id);
+                            grid.label(measurement.parameter.as_deref().unwrap_or("—"));
+
+                            let mean_response =
+                                grid.label(format!("{:.3}", measurement.mean.point_estimate_ms));
+                            if let Some(std_dev) = measurement.std_dev_ms {
+                                mean_response.on_hover_text(format!("Std dev: {:.3} ms", std_dev));
+                            }
+
+                            let ci_text = format!(
+                                "{:.3} – {:.3}",
+                                measurement.mean.lower_bound_ms, measurement.mean.upper_bound_ms
+                            );
+                            let ci_response = grid.label(ci_text);
+                            let confidence_pct = measurement.mean.confidence_level * 100.0;
+                            ci_response
+                                .on_hover_text(format!("{confidence_pct:.1}% confidence interval"));
+
+                            grid.end_row();
+                        }
+                    });
+                }
+
+                if let Some(report_url) = &summary.report_url {
+                    ui.add_space(4.0);
+                    ui.hyperlink_to("Open full Criterion report", report_url);
+                }
+            } else {
+                ui.label("Run `cargo bench` to generate Criterion results for this example.");
+            }
+
+            if let Some(resource) = &example.metadata.benchmarks {
+                if let Some(description) = &resource.description {
+                    ui.add_space(4.0);
+                    ui.label(description);
+                }
+                if let Some(url) = &resource.url {
+                    let link_label = resource
+                        .label
+                        .as_deref()
+                        .unwrap_or("View benchmark artifacts");
+                    ui.hyperlink_to(link_label, url);
+                }
             }
         });
     }
