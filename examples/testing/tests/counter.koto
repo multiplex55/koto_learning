@@ -1,0 +1,39 @@
+# Title: Counter behaviour
+# Description: Validates the counter helpers used by the example script.
+
+import serde
+
+log_event = |event|
+  host.log_info serde.to_json(event)
+
+make_counter = ||
+  count: 0
+  increment: |amount = 1|
+    log_event { action: 'test-increment', amount, before: self.count }
+    self.count += amount
+    self.count
+  reset: ||
+    log_event { action: 'test-reset' }
+    self.count = 0
+    self.count
+
+export tests =
+  @pre_test: || log_event { action: 'pre-test', value: self.count }
+  @post_test: || log_event { action: 'post-test', value: self.count }
+  @test resets_to_zero: ||
+    counter = make_counter()
+    counter.increment()
+    counter.reset()
+    if counter.count != 0
+      throw "Expected reset to zero, found {counter.count}"
+  @test increments_by_default: ||
+    counter = make_counter()
+    value = counter.increment()
+    if value != 1
+      throw "Default increment should return 1, found {value}"
+  @test increments_by_amount: ||
+    counter = make_counter()
+    counter.increment()
+    value = counter.increment(3)
+    if value != 4
+      throw "Increment by amount should accumulate to 4, found {value}"

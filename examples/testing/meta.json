@@ -1,14 +1,19 @@
 {
   "id": "testing",
   "title": "Koto Tests",
-  "description": "Use the `test` module to define and run unit-style checks from a script.",
-  "note": "Includes hooks that emit log output before and after each test.",
+  "description": "Use harness-driven suites and structured logging to validate scripts in-place.",
+  "note": "Enable Hot reload to watch for changes and inspect the Tests tab for live results.",
   "doc_url": "examples/testing/docs.md",
-  "run_instructions": "Run the script to execute the bundled tests. Inspect the generated logs to see hook output.",
+  "run_instructions": "Run the example to emit structured logs, then open the Tests tab to execute the suites.",
   "categories": ["testing", "quality"],
+  "tests": {
+    "label": "View test sources",
+    "description": "Browse the suites that back the Tests tab output.",
+    "url": "examples/testing/tests"
+  },
   "how_it_works": [
-    "Defines a simple counter map with increment and reset helpers.",
-    "Registers `@pre_test` and `@post_test` hooks that call `host.log_info`.",
-    "Executes the tests manually via `test.run_tests` so results are visible in the console and logs."
+    "Exports reusable helpers so test suites can exercise the same counter logic as the script.",
+    "Structured JSON is logged through host.log_info and appears in both the console and runtime log file.",
+    "Each .koto file under tests/ defines a suite that the UI harness can run individually or in bulk."
   ]
 }

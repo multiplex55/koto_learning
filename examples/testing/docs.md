@@ -1,14 +1,18 @@
 # Testing from scripts
 
-The testing example shows how to orchestrate unit-style checks entirely within Koto. It calls into the `test` module manually so the runtime can run the assertions even when automatic test discovery is disabled.
+The testing example demonstrates how to pair structured logging with harness-driven suites.
 
-## Step-by-step
-1. Create a simple counter map whose methods mutate shared state.
-2. Describe hooks and test cases inside a map that exports `@pre_test`, `@post_test`, and individual `@test` functions.
-3. Call `test.run_tests` to execute the suite and collect output.
-4. Each hook uses `host.log_info` so you can inspect the runtime log files after a run.
+## What's included
+- `script.koto` exports reusable helpers (`log_event`, `make_counter`) and emits JSON log messages while it runs.
+- The `tests/` directory contains dedicated Koto files that describe suites using `@test`, `@pre_test`, and `@post_test` metadata.
+- The runtime captures everything written via `host.log_info`, piping it to `logs/runtime.log` and the console tab in the UI.
+
+## Try it out
+1. Run the example to watch the logging helper stream JSON events into the console.
+2. Open the **Tests** tab to execute either suite individually or the full set.
+3. Enable **Watch examples** and **Hot reload** so edits trigger UI notifications and optional automatic reruns.
 
 ## Experiment ideas
-- Add failing assertions to see how the runtime reports errors.
-- Extend the counter with additional behavior and accompanying tests.
-- Integrate with the performance example by timing how long the tests take to run.
+- Add a new `.koto` file under `tests/` to prototype a feature-specific suite.
+- Introduce deliberate failures to see how the harness surfaces stderr, stdout, and error messages.
+- Extend `log_event` with additional fields (such as a UUID or timing information) and observe how the structured output appears in the runtime log file.

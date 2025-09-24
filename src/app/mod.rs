@@ -6,7 +6,7 @@ use eframe::egui;
 use egui::{Align2, Color32, CornerRadius, Grid, RichText};
 use egui_extras::syntax_highlighting;
 use std::{
-    collections::{BTreeMap, BTreeSet, HashMap},
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     fs::File,
     io::{Read, Seek, SeekFrom},
     path::PathBuf,
@@ -34,6 +34,9 @@ pub struct ExplorerApp {
     runtime_log_size: u64,
     last_log_poll: Option<Instant>,
     snackbars: Vec<Snackbar>,
+    active_console_pane: ConsolePane,
+    test_runs: HashMap<String, examples::tests::TestSuiteResult>,
+    hot_reload_notices: Vec<HotReloadNotice>,
 }
 
 impl ExplorerApp {
@@ -70,6 +73,9 @@ impl ExplorerApp {
             runtime_log_size: 0,
             last_log_poll: None,
             snackbars: Vec::new(),
+            active_console_pane: ConsolePane::Console,
+            test_runs: HashMap::new(),
+            hot_reload_notices: Vec::new(),
         };
 
         if let Some(metadata) = app.examples.first().map(|example| example.metadata.clone()) {
@@ -102,14 +108,83 @@ impl ExplorerApp {
                 self.examples_version = version;
                 self.on_examples_changed(true);
             }
+            let changes = library.take_recent_changes();
+            if !changes.is_empty() {
+                self.handle_script_changes(changes);
+            }
+        }
+    }
+
+    fn handle_script_changes(&mut self, changes: Vec<examples::ScriptChange>) {
+        for change in changes {
+            self.on_script_change(&change);
+            self.hot_reload_notices.push(HotReloadNotice { change });
+        }
+        self.prune_hot_reload_notices();
+    }
+
+    fn on_script_change(&mut self, change: &examples::ScriptChange) {
+        match &change.kind {
+            examples::ScriptChangeKind::ScriptUpdated { .. } => {
+                let prefix = format!("{}::", change.example_id);
+                self.test_runs.retain(|key, _| !key.starts_with(&prefix));
+            }
+            examples::ScriptChangeKind::TestSuiteUpdated { suite_id, .. } => {
+                let key = format!("{}::{suite_id}", change.example_id);
+                self.test_runs.remove(&key);
+            }
+        }
+
+        let message = describe_change(change);
+        self.push_console_entry(ConsoleEntry::log(message.clone()));
+        self.push_snackbar(message, SnackbarKind::Info);
+    }
+
+    fn prune_test_runs(&mut self) {
+        let valid: HashSet<String> = self
+            .examples
+            .iter()
+            .flat_map(|example| {
+                example
+                    .test_suites
+                    .iter()
+                    .map(move |suite| format!("{}::{}", example.metadata.id, suite.id))
+            })
+            .collect();
+        self.test_runs.retain(|key, _| valid.contains(key));
+    }
+
+    fn prune_hot_reload_notices(&mut self) {
+        let valid_examples: HashSet<_> = self
+            .examples
+            .iter()
+            .map(|example| example.metadata.id.clone())
+            .collect();
+        self.hot_reload_notices
+            .retain(|notice| valid_examples.contains(&notice.change.example_id));
+        if self.hot_reload_notices.len() > 20 {
+            let excess = self.hot_reload_notices.len() - 20;
+            self.hot_reload_notices.drain(0..excess);
         }
     }
 
     fn refresh_examples_from_library(&mut self) {
         if let Some(library) = self.example_library {
+            if let Err(error) = library.refresh() {
+                self.push_console_entry(ConsoleEntry::error(format!(
+                    "Failed to refresh examples: {error}"
+                )));
+                self.push_snackbar("Failed to refresh examples", SnackbarKind::Error);
+                return;
+            }
+
             self.examples = library.snapshot();
             self.examples_version = library.version();
             self.on_examples_changed(false);
+            let changes = library.take_recent_changes();
+            if !changes.is_empty() {
+                self.handle_script_changes(changes);
+            }
             self.push_snackbar("Example catalog refreshed", SnackbarKind::Info);
         }
     }
@@ -160,6 +235,8 @@ impl ExplorerApp {
             }
         }
 
+        self.prune_test_runs();
+        self.prune_hot_reload_notices();
         self.has_loaded_examples_once = true;
     }
 
@@ -579,6 +656,8 @@ impl ExplorerApp {
                 ui.toggle_value(&mut self.hot_reload_enabled, "Hot reload");
             });
 
+            self.hot_reload_notice_ui(ui, &example);
+
             if example.metadata.benchmarks.is_some() || example.benchmark_summary.is_some() {
                 ui.add_space(6.0);
                 self.benchmark_summary_ui(ui, &example);
@@ -684,33 +763,326 @@ impl ExplorerApp {
 
     fn console_ui(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
         ui.horizontal(|ui| {
-            ui.label(RichText::new("Console").strong());
-            if ui.button("Copy").clicked() {
-                let text = self
-                    .console_entries
-                    .iter()
-                    .map(|entry| format!("{}", entry.message))
-                    .collect::<Vec<_>>()
-                    .join("\n");
-                ctx.copy_text(text);
-            }
-            if ui.button("Clear").clicked() {
-                self.console_entries.clear();
+            ui.selectable_value(
+                &mut self.active_console_pane,
+                ConsolePane::Console,
+                "Console",
+            );
+            ui.selectable_value(&mut self.active_console_pane, ConsolePane::Tests, "Tests");
+            if matches!(self.active_console_pane, ConsolePane::Console) {
+                if ui.button("Copy").clicked() {
+                    let text = self
+                        .console_entries
+                        .iter()
+                        .map(|entry| entry.message.clone())
+                        .collect::<Vec<_>>()
+                        .join("\n");
+                    ctx.copy_text(text);
+                }
+                if ui.button("Clear").clicked() {
+                    self.console_entries.clear();
+                }
             }
         });
         ui.separator();
 
-        egui::ScrollArea::vertical()
-            .stick_to_bottom(true)
-            .id_salt("console_scroll")
-            .show(ui, |ui| {
-                for entry in &self.console_entries {
-                    let visuals = ui.visuals();
-                    let color = entry.kind.color(visuals);
-                    let message = RichText::new(&entry.message).color(color);
-                    ui.label(message);
+        match self.active_console_pane {
+            ConsolePane::Console => {
+                egui::ScrollArea::vertical()
+                    .stick_to_bottom(true)
+                    .id_salt("console_scroll")
+                    .show(ui, |ui| {
+                        for entry in &self.console_entries {
+                            let visuals = ui.visuals();
+                            let color = entry.kind.color(visuals);
+                            let message = RichText::new(&entry.message).color(color);
+                            ui.label(message);
+                        }
+                    });
+            }
+            ConsolePane::Tests => {
+                self.tests_ui(ui);
+            }
+        }
+    }
+
+    fn tests_ui(&mut self, ui: &mut egui::Ui) {
+        let Some(example) = self.selected_example().cloned() else {
+            ui.label("Select an example to inspect its test suites.");
+            return;
+        };
+
+        if example.test_suites.is_empty() {
+            ui.label("This example doesn't define any Koto test suites yet.");
+            return;
+        }
+
+        if ui.button("Run all suites").clicked() {
+            self.run_all_suites(&example);
+        }
+        ui.separator();
+
+        for suite in &example.test_suites {
+            let key = format!("{}::{}", example.metadata.id, suite.id);
+            let result = self.test_runs.get(&key).cloned();
+            ui.group(|ui| {
+                ui.horizontal(|ui| {
+                    ui.heading(&suite.name);
+                    if ui.button("Run").clicked() {
+                        self.run_suite_for_example(&example, suite);
+                    }
+                });
+                if let Some(description) = &suite.description {
+                    ui.label(description);
+                }
+
+                if let Some(result) = result.as_ref() {
+                    let status_text = if result.passed {
+                        RichText::new("All tests passed").color(Color32::from_rgb(120, 200, 120))
+                    } else {
+                        RichText::new("Failures detected").color(Color32::from_rgb(220, 100, 100))
+                    };
+                    ui.label(status_text);
+                    ui.label(format!(
+                        "Suites: {} tests, {} ms total",
+                        result.cases.len(),
+                        result.total_duration.as_millis()
+                    ));
+
+                    if !result.setup_stdout.is_empty() {
+                        ui.collapsing("Suite stdout", |ui| {
+                            ui.monospace(&result.setup_stdout);
+                        });
+                    }
+                    if !result.setup_stderr.is_empty() {
+                        ui.collapsing("Suite stderr", |ui| {
+                            ui.monospace(&result.setup_stderr);
+                        });
+                    }
+
+                    for case in &result.cases {
+                        let header = egui::CollapsingHeader::new(format!(
+                            "{} ({:.0} ms)",
+                            case.name,
+                            case.duration.as_secs_f32() * 1000.0
+                        ))
+                        .default_open(matches!(case.status, examples::tests::TestStatus::Failed));
+
+                        header.show(ui, |ui| {
+                            let status =
+                                match case.status {
+                                    examples::tests::TestStatus::Passed => RichText::new("Passed")
+                                        .color(Color32::from_rgb(120, 200, 120)),
+                                    examples::tests::TestStatus::Failed => RichText::new("Failed")
+                                        .color(Color32::from_rgb(220, 100, 100)),
+                                };
+                            ui.label(status);
+                            if let Some(error) = &case.error {
+                                ui.label(
+                                    RichText::new(error).color(Color32::from_rgb(220, 100, 100)),
+                                );
+                            }
+                            if !case.stdout.is_empty() {
+                                ui.collapsing("Stdout", |ui| ui.monospace(&case.stdout));
+                            }
+                            if !case.stderr.is_empty() {
+                                ui.collapsing("Stderr", |ui| ui.monospace(&case.stderr));
+                            }
+                        });
+                    }
+                } else {
+                    ui.label("Run the suite to view results.");
                 }
             });
+        }
+    }
+
+    fn run_suite_for_example(
+        &mut self,
+        example: &Example,
+        suite: &examples::tests::ExampleTestSuite,
+    ) {
+        let key = format!("{}::{}", example.metadata.id, suite.id);
+        self.active_console_pane = ConsolePane::Tests;
+        self.push_console_entry(ConsoleEntry::info(format!(
+            "Running suite '{}' for '{}'",
+            suite.name, example.metadata.title
+        )));
+
+        match examples::tests::run_suite(suite) {
+            Ok(result) => {
+                let passed_count = result
+                    .cases
+                    .iter()
+                    .filter(|case| case.status == examples::tests::TestStatus::Passed)
+                    .count();
+                let message = format!(
+                    "Suite '{}' finished: {passed_count}/{} cases passed ({} ms)",
+                    suite.name,
+                    result.cases.len(),
+                    result.total_duration.as_millis()
+                );
+                if result.passed {
+                    self.push_console_entry(ConsoleEntry::info(message.clone()));
+                    self.push_snackbar(message, SnackbarKind::Success);
+                } else {
+                    self.push_console_entry(ConsoleEntry::error(message.clone()));
+                    self.push_snackbar(message, SnackbarKind::Error);
+                }
+                self.test_runs.insert(key, result);
+            }
+            Err(error) => {
+                self.push_console_entry(ConsoleEntry::error(format!(
+                    "Failed to run suite '{}': {error}",
+                    suite.name
+                )));
+                self.push_snackbar("Test suite failed to run", SnackbarKind::Error);
+                self.test_runs.remove(&key);
+            }
+        }
+    }
+
+    fn run_all_suites(&mut self, example: &Example) {
+        if example.test_suites.is_empty() {
+            return;
+        }
+
+        self.active_console_pane = ConsolePane::Tests;
+        self.push_console_entry(ConsoleEntry::info(format!(
+            "Running {} suites for '{}'",
+            example.test_suites.len(),
+            example.metadata.title
+        )));
+
+        let mut any_failed = false;
+        for suite in &example.test_suites {
+            self.run_suite_for_example(example, suite);
+            let key = format!("{}::{}", example.metadata.id, suite.id);
+            if let Some(result) = self.test_runs.get(&key) {
+                if !result.passed {
+                    any_failed = true;
+                }
+            }
+        }
+
+        let summary = if any_failed {
+            format!(
+                "Finished running suites for '{}' with failures",
+                example.metadata.title
+            )
+        } else {
+            format!("All suites for '{}' passed", example.metadata.title)
+        };
+
+        if any_failed {
+            self.push_console_entry(ConsoleEntry::error(summary.clone()));
+            self.push_snackbar(summary, SnackbarKind::Error);
+        } else {
+            self.push_console_entry(ConsoleEntry::info(summary.clone()));
+            self.push_snackbar(summary, SnackbarKind::Success);
+        }
+    }
+
+    fn hot_reload_notice_ui(&mut self, ui: &mut egui::Ui, example: &Example) {
+        let notices: Vec<_> = self
+            .hot_reload_notices
+            .iter()
+            .enumerate()
+            .filter(|(_, notice)| notice.change.example_id == example.metadata.id)
+            .map(|(index, notice)| (index, notice.clone()))
+            .collect();
+
+        if notices.is_empty() {
+            return;
+        }
+
+        ui.add_space(6.0);
+        ui.group(|ui| {
+            ui.heading("Hot reload updates");
+            ui.label("Changes were detected on disk. Re-run the example or revert below.");
+
+            let mut to_remove = Vec::new();
+
+            for (index, notice) in notices {
+                ui.separator();
+                let description = describe_change(&notice.change);
+                let elapsed = notice
+                    .change
+                    .changed_at
+                    .elapsed()
+                    .map(format_elapsed)
+                    .unwrap_or_else(|_| "just now".to_string());
+                let file_name = notice
+                    .change
+                    .path
+                    .file_name()
+                    .and_then(|name| name.to_str().map(|s| s.to_string()))
+                    .unwrap_or_else(|| notice.change.path.to_string_lossy().into_owned());
+
+                ui.vertical(|ui| {
+                    ui.label(RichText::new(description).strong());
+                    ui.label(RichText::new(format!("{} • {}", file_name, elapsed)).small());
+                });
+
+                ui.horizontal(|ui| {
+                    if ui.button("Revert change").clicked() {
+                        if self.revert_script_change(&notice.change) {
+                            to_remove.push(index);
+                        }
+                    }
+                    if ui.button("Dismiss").clicked() {
+                        to_remove.push(index);
+                    }
+                });
+            }
+
+            to_remove.sort_unstable();
+            to_remove.dedup();
+            for index in to_remove.into_iter().rev() {
+                self.hot_reload_notices.remove(index);
+            }
+        });
+    }
+
+    fn revert_script_change(&mut self, change: &examples::ScriptChange) -> bool {
+        let Some(library) = self.example_library else {
+            self.push_console_entry(ConsoleEntry::error(
+                "Example library is unavailable; cannot revert change",
+            ));
+            self.push_snackbar("Revert not available", SnackbarKind::Error);
+            return false;
+        };
+
+        match library.revert_change(change) {
+            Ok(_) => {
+                self.push_console_entry(ConsoleEntry::info(format!(
+                    "Reverted change: {}",
+                    describe_change(change)
+                )));
+
+                if let Err(error) = library.refresh() {
+                    self.push_console_entry(ConsoleEntry::error(format!(
+                        "Failed to reload examples after revert: {error}",
+                    )));
+                    self.push_snackbar("Revert applied with reload errors", SnackbarKind::Error);
+                } else {
+                    // Refresh local snapshot and discard any reload notices created by the revert.
+                    self.examples = library.snapshot();
+                    self.examples_version = library.version();
+                    self.on_examples_changed(false);
+                    let _ = library.take_recent_changes();
+                    self.push_snackbar("Change reverted", SnackbarKind::Success);
+                }
+                true
+            }
+            Err(error) => {
+                self.push_console_entry(ConsoleEntry::error(format!(
+                    "Failed to revert change: {error}",
+                )));
+                self.push_snackbar("Revert failed", SnackbarKind::Error);
+                false
+            }
+        }
     }
 
     fn show_snackbars(&mut self, ctx: &egui::Context) {
@@ -820,6 +1192,12 @@ impl ConsoleEntry {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ConsolePane {
+    Console,
+    Tests,
+}
+
 #[derive(Clone, Copy)]
 enum ConsoleKind {
     Info,
@@ -856,6 +1234,11 @@ struct Snackbar {
     duration: Duration,
 }
 
+#[derive(Clone)]
+struct HotReloadNotice {
+    change: examples::ScriptChange,
+}
+
 #[derive(Clone, Copy)]
 enum SnackbarKind {
     Success,
@@ -870,5 +1253,85 @@ impl SnackbarKind {
             Self::Error => Color32::from_rgb(220, 100, 100),
             Self::Info => visuals.text_color(),
         }
+    }
+}
+
+fn describe_change(change: &examples::ScriptChange) -> String {
+    let action = match &change.kind {
+        examples::ScriptChangeKind::ScriptUpdated { previous, current } => change_action(
+            "script",
+            change,
+            previous.is_some(),
+            current.is_some(),
+            None,
+        ),
+        examples::ScriptChangeKind::TestSuiteUpdated {
+            suite_id,
+            previous,
+            current,
+        } => change_action(
+            "test suite",
+            change,
+            previous.is_some(),
+            current.is_some(),
+            Some(suite_id),
+        ),
+    };
+    action
+}
+
+fn change_action(
+    kind: &str,
+    change: &examples::ScriptChange,
+    had_previous: bool,
+    has_current: bool,
+    suite: Option<&str>,
+) -> String {
+    let verb = match (had_previous, has_current) {
+        (false, true) => "added",
+        (true, true) => "updated",
+        (true, false) => "removed",
+        (false, false) => "updated",
+    };
+
+    let file_name = change
+        .path
+        .file_name()
+        .and_then(|name| name.to_str().map(|s| s.to_string()))
+        .unwrap_or_else(|| change.path.to_string_lossy().into_owned());
+
+    match suite {
+        Some(suite_id) => format!(
+            "Example '{}' {kind} '{suite_id}' {verb} ({})",
+            change.example_id, file_name
+        ),
+        None => format!(
+            "Example '{}' {kind} {verb} ({})",
+            change.example_id, file_name
+        ),
+    }
+}
+
+fn format_elapsed(duration: Duration) -> String {
+    if duration.as_secs() >= 3600 {
+        let hours = duration.as_secs() / 3600;
+        let minutes = (duration.as_secs() % 3600) / 60;
+        if minutes == 0 {
+            format!("{hours}h ago")
+        } else {
+            format!("{hours}h {minutes}m ago")
+        }
+    } else if duration.as_secs() >= 60 {
+        let minutes = duration.as_secs() / 60;
+        let seconds = duration.as_secs() % 60;
+        if seconds == 0 {
+            format!("{minutes}m ago")
+        } else {
+            format!("{minutes}m {seconds}s ago")
+        }
+    } else if duration.as_millis() >= 1000 {
+        format!("{}s ago", duration.as_secs())
+    } else {
+        format!("{}ms ago", duration.as_millis())
     }
 }

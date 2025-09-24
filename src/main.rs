@@ -1,9 +1,9 @@
 use anyhow::{Result, anyhow};
 use eframe::NativeOptions;
-use koto_learning::app::ExplorerApp;
+use koto_learning::{app::ExplorerApp, runtime::logging};
 
 fn main() -> Result<()> {
-    env_logger::init();
+    logging::init_global()?;
     log::info!("Launching Koto Learning Explorer");
 
     let native_options = NativeOptions::default();
