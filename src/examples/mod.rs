@@ -12,7 +12,7 @@ use once_cell::sync::OnceCell;
 use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use crate::runtime::logging;
+use crate::{benchmarks, runtime::logging};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ExampleMetadata {
@@ -81,6 +81,7 @@ pub struct Example {
     pub script: String,
     pub docs: Option<ExampleDocs>,
     pub loaded_at: SystemTime,
+    pub benchmark_summary: Option<benchmarks::ExampleBenchmarkSummary>,
 }
 
 pub struct ExampleLibrary {
@@ -123,7 +124,9 @@ impl ExampleLibrary {
 
     pub fn get(&self, id: &str) -> Option<Example> {
         let guard = self.inner.examples.read().ok()?;
-        guard.get(id).cloned()
+        let mut example = guard.get(id).cloned()?;
+        example.benchmark_summary = benchmarks::load_example_summary(&example.metadata.id);
+        Some(example)
     }
 
     fn with_watcher(examples_dir: PathBuf, watch: bool) -> Result<Self> {
@@ -191,7 +194,17 @@ impl ExampleLibraryInner {
     fn snapshot(&self) -> Vec<Example> {
         self.examples
             .read()
-            .map(|examples| examples.values().cloned().collect())
+            .map(|examples| {
+                examples
+                    .values()
+                    .cloned()
+                    .map(|mut example| {
+                        example.benchmark_summary =
+                            benchmarks::load_example_summary(&example.metadata.id);
+                        example
+                    })
+                    .collect()
+            })
             .unwrap_or_default()
     }
 }
@@ -270,11 +283,13 @@ fn load_examples_from_dir(dir: &Path) -> Result<BTreeMap<String, Example>> {
                         if metadata.doc_url.is_none() {
                             metadata.doc_url = Some(format!("examples/{}/docs.md", metadata.id));
                         }
+                        let benchmark_summary = benchmarks::load_example_summary(&metadata.id);
                         let example = Example {
                             script: script_content,
                             metadata,
                             docs,
                             loaded_at: SystemTime::now(),
+                            benchmark_summary,
                         };
                         examples.insert(example.metadata.id.clone(), example);
                     }

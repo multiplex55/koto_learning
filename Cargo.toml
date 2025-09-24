@@ -3,6 +3,10 @@ name = "koto_learning"
 version = "0.1.0"
 edition = "2024"
 
+[features]
+default = []
+bench-extended = []
+
 [dependencies]
 anyhow = "1.0.100"
 directories = "6.0.0"
@@ -25,4 +29,5 @@ tracing-subscriber = { version = "0.3.18", features = ["fmt", "ansi"] }
 uuid = { version = "1.10.0", features = ["v4"] }
 
 [dev-dependencies]
+criterion = "0.5.1"
 tempfile = "3.13.0"

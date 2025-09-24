@@ -21,6 +21,43 @@ use uuid::Uuid;
 
 pub static RUNTIME: Lazy<Runtime> = Lazy::new(|| Runtime::new().expect("runtime init failed"));
 
+#[derive(Clone, Copy)]
+pub struct Executor {
+    runtime: &'static Runtime,
+}
+
+impl Executor {
+    pub fn new() -> Self {
+        Self { runtime: &RUNTIME }
+    }
+
+    pub fn with_runtime(runtime: &'static Runtime) -> Self {
+        Self { runtime }
+    }
+
+    pub fn runtime(&self) -> &'static Runtime {
+        self.runtime
+    }
+
+    pub fn execute_script(&self, script: &str) -> anyhow::Result<ExecutionOutput> {
+        self.runtime.execute_script(script)
+    }
+
+    pub fn execute_script_with_timeout(
+        &self,
+        script: &str,
+        timeout: Option<Duration>,
+    ) -> anyhow::Result<ExecutionOutput> {
+        self.runtime.execute_script_with_timeout(script, timeout)
+    }
+}
+
+impl Default for Executor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 pub struct Runtime {
     state: Mutex<RuntimeState>,
     stdout: BufferHandle,

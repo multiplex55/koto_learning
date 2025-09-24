@@ -6,6 +6,9 @@
   "doc_url": "examples/performance/docs.md",
   "run_instructions": "Run the script to capture timings, then adjust the targets to explore trade-offs.",
   "categories": ["performance", "host"],
+  "benchmarks": {
+    "description": "Run `cargo bench` to generate Criterion reports that mirror this example's measurements."
+  },
   "how_it_works": [
     "Defines a naive recursive Fibonacci function in Koto.",
     "Uses `host.performance.now_ms` to capture execution durations in milliseconds.",
