@@ -1,0 +1,32 @@
+fib = |n|
+  if n <= 1
+    n
+  else
+    fib(n - 1) + fib(n - 2)
+
+measure = |label, action|
+  start = host.performance.now_ms()
+  value = action()
+  elapsed = host.performance.now_ms() - start
+  print '{label} produced {value} in {elapsed} ms'
+  value, elapsed
+
+small_target = 20
+large_target = 35
+
+koto_value, koto_ms = measure 'Koto fib'
+  || fib small_target
+
+rust_value, rust_ms = measure 'Rust fib'
+  || host.performance.fast_fib large_target
+
+{
+  koto:
+    input: small_target
+    value: koto_value
+    elapsed_ms: koto_ms
+  rust:
+    input: large_target
+    value: rust_value
+    elapsed_ms: rust_ms
+}

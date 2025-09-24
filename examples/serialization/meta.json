@@ -1,0 +1,14 @@
+{
+  "id": "serialization",
+  "title": "JSON and YAML",
+  "description": "Round-trip data structures using host-powered serde helpers.",
+  "note": "Covers converting maps and lists between native values and text formats.",
+  "doc_url": "examples/serialization/docs.md",
+  "run_instructions": "Run the script to see both JSON and YAML output, then tweak the payload map to observe changes.",
+  "categories": ["serialization", "interop"],
+  "how_it_works": [
+    "Builds a nested map and list payload in pure Koto.",
+    "Uses `serde.to_json` and `serde.to_yaml` to emit formatted text.",
+    "Calls `serde.from_json` and `serde.from_yaml` to reconstruct the original data."
+  ]
+}

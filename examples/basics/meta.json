@@ -1,0 +1,14 @@
+{
+  "id": "basics",
+  "title": "Language Basics",
+  "description": "Walk through variables, lists, and maps in a single script.",
+  "note": "Demonstrates fundamental syntax and collection handling.",
+  "doc_url": "examples/basics/docs.md",
+  "run_instructions": "Run the script and tweak the scores list to see the summary update.",
+  "categories": ["basics", "collections"],
+  "how_it_works": [
+    "Defines a greeting function and iterates through a list to compute an average.",
+    "Builds a map with data and callable entries to highlight how maps can act like structs.",
+    "Returns a summary map so the UI shows both computed values and formatted text."
+  ]
+}

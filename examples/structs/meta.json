@@ -1,0 +1,14 @@
+{
+  "id": "structs",
+  "title": "Struct-like Maps",
+  "description": "Model data with maps that expose methods and custom displays.",
+  "note": "Shows how maps and `self` enable struct-style ergonomics.",
+  "doc_url": "examples/structs/docs.md",
+  "run_instructions": "Run the script, then modify the calls to `move` to see the custom display update.",
+  "categories": ["structs", "maps"],
+  "how_it_works": [
+    "`make_vector` returns a map that stores fields and functions using `self` for context.",
+    "Calling `move` mutates the internal state just like a struct method would.",
+    "The `@display` metamethod customizes how the map prints in logs and return values."
+  ]
+}

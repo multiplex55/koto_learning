@@ -1,0 +1,22 @@
+print 'Interop demo running'
+
+echoed = host.echo 'Hello from Koto!'
+print 'host.echo returned:', echoed
+
+timestamp = host.now()
+print 'host.now returned seconds since epoch:', timestamp
+
+uuid = host.uuid_v4()
+print 'Generated UUID from Rust:', uuid
+
+host.log_info 'interop example triggered logging hooks'
+
+profiling = host.profiling_enabled()
+print 'Is profiling enabled?', profiling
+
+{
+  echoed,
+  timestamp,
+  uuid,
+  profiling,
+}

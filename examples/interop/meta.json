@@ -1,0 +1,14 @@
+{
+  "id": "interop",
+  "title": "Rust Interop",
+  "description": "Call host-provided bindings, including functionality backed by external crates.",
+  "note": "Uses the runtime's `host` module to cross the language boundary.",
+  "doc_url": "examples/interop/docs.md",
+  "run_instructions": "Run the script and watch stdout alongside the runtime logs to see the host hooks in action.",
+  "categories": ["interop", "host"],
+  "how_it_works": [
+    "Demonstrates simple calls into Rust with `host.echo` and `host.now`.",
+    "Uses a UUID helper exposed from Rust (implemented with the `uuid` crate).",
+    "Invokes `host.log_info` to exercise the tracing subscriber and produce log output."
+  ]
+}

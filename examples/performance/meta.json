@@ -1,0 +1,14 @@
+{
+  "id": "performance",
+  "title": "Performance Comparison",
+  "description": "Compare a recursive Koto Fibonacci implementation with a Rust host helper.",
+  "note": "Highlights the built-in timing helper and native host functions.",
+  "doc_url": "examples/performance/docs.md",
+  "run_instructions": "Run the script to capture timings, then adjust the targets to explore trade-offs.",
+  "categories": ["performance", "host"],
+  "how_it_works": [
+    "Defines a naive recursive Fibonacci function in Koto.",
+    "Uses `host.performance.now_ms` to capture execution durations in milliseconds.",
+    "Calls `host.performance.fast_fib` (implemented in Rust) for a fast baseline."
+  ]
+}
