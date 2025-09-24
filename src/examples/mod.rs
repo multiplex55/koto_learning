@@ -70,9 +70,16 @@ pub struct ExampleResource {
 }
 
 #[derive(Clone, Debug)]
+pub struct ExampleDocs {
+    pub path: PathBuf,
+    pub summary: String,
+}
+
+#[derive(Clone, Debug)]
 pub struct Example {
     pub metadata: ExampleMetadata,
     pub script: String,
+    pub docs: Option<ExampleDocs>,
     pub loaded_at: SystemTime,
 }
 
@@ -245,9 +252,28 @@ fn load_examples_from_dir(dir: &Path) -> Result<BTreeMap<String, Example>> {
                         if metadata.id.is_empty() {
                             metadata.id = folder_name.clone();
                         }
+                        let docs_path = example_dir.join("docs.md");
+                        let docs = match fs::read_to_string(&docs_path) {
+                            Ok(content) => {
+                                let summary = doc_summary(&content);
+                                let docs = ExampleDocs {
+                                    path: docs_path.clone(),
+                                    summary,
+                                };
+                                if metadata.doc_url.is_none() {
+                                    metadata.doc_url = Some(doc_url_from_path(&docs.path));
+                                }
+                                Some(docs)
+                            }
+                            Err(_) => None,
+                        };
+                        if metadata.doc_url.is_none() {
+                            metadata.doc_url = Some(format!("examples/{}/docs.md", metadata.id));
+                        }
                         let example = Example {
                             script: script_content,
                             metadata,
+                            docs,
                             loaded_at: SystemTime::now(),
                         };
                         examples.insert(example.metadata.id.clone(), example);
@@ -313,4 +339,29 @@ fn default_examples_dir() -> PathBuf {
     }
 
     PathBuf::from("examples")
+}
+
+fn doc_summary(content: &str) -> String {
+    for paragraph in content.split("\n\n") {
+        let trimmed = paragraph.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        if trimmed.starts_with('#') {
+            continue;
+        }
+        return trimmed.replace('\n', " ");
+    }
+    content
+        .lines()
+        .find(|line| !line.trim().is_empty())
+        .map(|line| line.trim().to_string())
+        .unwrap_or_default()
+}
+
+fn doc_url_from_path(path: &Path) -> String {
+    match path.canonicalize() {
+        Ok(canonical) => format!("file://{}", canonical.display()),
+        Err(_) => format!("file://{}", path.display()),
+    }
 }

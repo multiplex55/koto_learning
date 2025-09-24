@@ -1,0 +1,24 @@
+payload =
+  app: 'Koto Learning'
+  tags: ['examples', 'guides', 'interop']
+  metrics:
+    users: 128
+    active: true
+
+json_text = serde.to_json payload
+print 'JSON output:'
+print json_text
+
+yaml_text = serde.to_yaml payload
+print 'YAML output:'
+print yaml_text
+
+from_json = serde.from_json json_text
+from_yaml = serde.from_yaml yaml_text
+
+{
+  json: json_text,
+  yaml: yaml_text,
+  round_trip_agrees: from_json.app == from_yaml.app,
+  tags: from_json.tags,
+}

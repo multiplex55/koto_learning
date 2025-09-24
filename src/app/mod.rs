@@ -500,7 +500,16 @@ impl ExplorerApp {
                 ui.label(RichText::new(instructions).strong());
             }
 
-            if let Some(doc_url) = &example.metadata.doc_url {
+            if let Some(docs) = &example.docs {
+                ui.add_space(6.0);
+                ui.label(&docs.summary);
+                let link_target = example
+                    .metadata
+                    .doc_url
+                    .clone()
+                    .unwrap_or_else(|| format!("file://{}", docs.path.display()));
+                ui.hyperlink_to("Open detailed guide", link_target);
+            } else if let Some(doc_url) = &example.metadata.doc_url {
                 ui.add_space(6.0);
                 ui.hyperlink(doc_url);
             }

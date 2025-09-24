@@ -1,0 +1,31 @@
+from test import run_tests
+
+make_counter = ||
+  count: 0
+  increment: ||
+    self.count += 1
+    self.count
+  reset: ||
+    self.count = 0
+    self.count
+
+counter = make_counter()
+
+tests =
+  @pre_test: || host.log_info 'Starting test case'
+  @post_test: || host.log_info 'Finished test case'
+  @test increments_once: ||
+    counter.reset()
+    value = counter.increment()
+    if value != 1
+      throw 'Expected 1 after reset, found {value}'
+  @test increments_twice: ||
+    counter.reset()
+    counter.increment()
+    value = counter.increment()
+    if value != 2
+      throw 'Expected 2 after two increments, found {value}'
+
+run_tests tests
+
+'Final counter value {counter.count}'

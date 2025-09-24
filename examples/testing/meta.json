@@ -1,0 +1,14 @@
+{
+  "id": "testing",
+  "title": "Koto Tests",
+  "description": "Use the `test` module to define and run unit-style checks from a script.",
+  "note": "Includes hooks that emit log output before and after each test.",
+  "doc_url": "examples/testing/docs.md",
+  "run_instructions": "Run the script to execute the bundled tests. Inspect the generated logs to see hook output.",
+  "categories": ["testing", "quality"],
+  "how_it_works": [
+    "Defines a simple counter map with increment and reset helpers.",
+    "Registers `@pre_test` and `@post_test` hooks that call `host.log_info`.",
+    "Executes the tests manually via `test.run_tests` so results are visible in the console and logs."
+  ]
+}

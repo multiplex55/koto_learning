@@ -1,0 +1,27 @@
+from number import sqrt
+
+make_vector = |x, y|
+  x: x
+  y: y
+  move: |dx, dy|
+    self.x += dx
+    self.y += dy
+    self
+  length: || sqrt ((self.x * self.x) + (self.y * self.y))
+  to_tuple: || (self.x, self.y)
+  @display: || 'Vector({self.x}, {self.y})'
+
+origin = make_vector 0, 0
+print origin
+
+moved = origin.move 3, 4
+print moved
+
+length = moved.length()
+print 'Length from origin:', length
+
+{
+  original: origin.to_tuple(),
+  moved: moved.to_tuple(),
+  length,
+}

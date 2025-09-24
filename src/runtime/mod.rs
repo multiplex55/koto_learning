@@ -15,7 +15,9 @@ use koto::{Koto, KotoSettings, prelude::*, runtime::Result as KotoRuntimeResult}
 use libloading::Library;
 use once_cell::sync::Lazy;
 use serde_json::Value as JsonValue;
+use serde_yaml::Value as YamlValue;
 use tracing::Level;
+use uuid::Uuid;
 
 pub static RUNTIME: Lazy<Runtime> = Lazy::new(|| Runtime::new().expect("runtime init failed"));
 
@@ -370,6 +372,70 @@ fn host_module(profiling_flag: Arc<AtomicBool>) -> KValue {
             Ok(format!("{}", now.as_secs()).into())
         }),
     );
+    module.insert(
+        "uuid_v4",
+        KNativeFunction::new(|_ctx: &mut CallContext| {
+            let id = Uuid::new_v4();
+            Ok(id.to_string().into())
+        }),
+    );
+    module.insert(
+        "log_info",
+        KNativeFunction::new(|ctx: &mut CallContext| {
+            let message = ctx
+                .args()
+                .first()
+                .map(|value| match value {
+                    KValue::Str(text) => text.to_string(),
+                    other => format!("{other:?}"),
+                })
+                .unwrap_or_else(|| "log event".to_string());
+            logging::with_runtime_subscriber(|| {
+                tracing::info!(target: "runtime.examples.host", message = %message);
+            });
+            Ok(message.into())
+        }),
+    );
+
+    let performance = {
+        let module = KMap::default();
+        module.insert(
+            "now_ms",
+            KNativeFunction::new(|_ctx: &mut CallContext| {
+                let now = match SystemTime::now().duration_since(SystemTime::UNIX_EPOCH) {
+                    Ok(duration) => duration,
+                    Err(error) => return runtime_error!("System time error: {error}"),
+                };
+                Ok((now.as_secs_f64() * 1000.0).into())
+            }),
+        );
+        module.insert(
+            "fast_fib",
+            KNativeFunction::new(|ctx: &mut CallContext| match ctx.args() {
+                [KValue::Number(n), ..] => {
+                    let target = match n {
+                        KNumber::I64(value) => *value,
+                        KNumber::F64(value) => value.trunc() as i64,
+                    };
+                    if target < 0 {
+                        return runtime_error!("Expected non-negative input, found {target}");
+                    }
+                    let mut a: i128 = 0;
+                    let mut b: i128 = 1;
+                    for _ in 0..target {
+                        let next = a + b;
+                        a = b;
+                        b = next;
+                    }
+                    Ok((a as f64).into())
+                }
+                other => runtime_error!("Expected numeric input, found {other:?}"),
+            }),
+        );
+        module
+    };
+
+    module.insert("performance", performance);
     module.into()
 }
 
@@ -403,6 +469,40 @@ fn serialization_module() -> anyhow::Result<KValue> {
                 }
             }
             other => runtime_error!("Expected JSON string, found {other:?}"),
+        }),
+    );
+    module.insert(
+        "to_yaml",
+        KNativeFunction::new(|ctx: &mut CallContext| {
+            let value = ctx.args().first().cloned().unwrap_or(KValue::Null);
+            let json: JsonValue = match koto::serde::from_koto_value(value) {
+                Ok(json) => json,
+                Err(error) => return runtime_error!("Serialization error: {error}"),
+            };
+            match serde_yaml::to_string(&json) {
+                Ok(text) => Ok(text.into()),
+                Err(error) => runtime_error!("Serialization error: {error}"),
+            }
+        }),
+    );
+    module.insert(
+        "from_yaml",
+        KNativeFunction::new(|ctx: &mut CallContext| match ctx.args() {
+            [KValue::Str(text), ..] => {
+                let parsed: YamlValue = match serde_yaml::from_str(text) {
+                    Ok(parsed) => parsed,
+                    Err(error) => return runtime_error!("Failed to parse YAML: {error}"),
+                };
+                let json_value = match serde_json::to_value(parsed) {
+                    Ok(value) => value,
+                    Err(error) => return runtime_error!("Failed to convert YAML: {error}"),
+                };
+                match koto::serde::to_koto_value(json_value) {
+                    Ok(value) => Ok(value),
+                    Err(error) => runtime_error!("Failed to convert YAML: {error}"),
+                }
+            }
+            other => runtime_error!("Expected YAML string, found {other:?}"),
         }),
     );
     Ok(module.into())

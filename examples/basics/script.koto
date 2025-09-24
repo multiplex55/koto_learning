@@ -1,0 +1,30 @@
+print 'Welcome to the basics tour!'
+
+greet = |name| 'Hello, {name}!'
+
+scores = [5, 7, 9, 10]
+total = 0
+count = 0
+
+for score in scores
+  total += score
+  count += 1
+
+average = total / count
+
+profile =
+  name: 'Ada'
+  language: 'Koto'
+  focus: 'Learning the basics'
+  describe: || 'Average score is {average}'
+
+message = greet profile.name
+print message
+print 'Computed average:', average
+
+{
+  greeting: message,
+  average,
+  profile: profile.language,
+  summary: profile.describe(),
+}
