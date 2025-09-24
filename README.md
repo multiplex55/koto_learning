@@ -26,6 +26,16 @@ Launch the explorer application:
 cargo run
 ```
 
+For the best runtime performance when exploring the examples, build and launch the
+release profile:
+
+```bash
+cargo run --release
+```
+
+The desktop UI is powered by `eframe`, so the same command works across Windows,
+macOS, and Linux environments with the standard Rust toolchain.
+
 ## Project Goals
 
 - Provide a desktop shell for exploring the Koto runtime interactively.

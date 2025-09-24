@@ -4,5 +4,39 @@
   "description": "Calculate the 10th Fibonacci number recursively.",
   "doc_url": "https://koto.dev/docs/",
   "run_instructions": "Try changing the input to see how execution time changes.",
-  "categories": ["math", "recursion"]
+  "categories": ["math", "recursion"],
+  "documentation": [
+    {
+      "label": "Working with functions",
+      "url": "https://koto.dev/docs/functions/"
+    },
+    {
+      "label": "Recursion patterns",
+      "url": "https://koto.dev/docs/recipes/recursion/"
+    }
+  ],
+  "how_it_works": [
+    "Defines a recursive function that computes the Fibonacci sequence.",
+    "Demonstrates conditional branching and recursive calls in Koto.",
+    "Shows how returning the final value exposes it in the console output."
+  ],
+  "inputs": [
+    {
+      "name": "n",
+      "label": "Sequence index",
+      "description": "Provide a non-negative integer to evaluate.",
+      "default": "10",
+      "placeholder": "10"
+    }
+  ],
+  "benchmarks": {
+    "label": "Benchmarking guide",
+    "description": "Compare recursive and iterative implementations.",
+    "url": "https://koto.dev/docs/benchmarking/"
+  },
+  "tests": {
+    "label": "Test runner",
+    "description": "Details on writing unit tests for scripts.",
+    "url": "https://koto.dev/docs/testing/"
+  }
 }
